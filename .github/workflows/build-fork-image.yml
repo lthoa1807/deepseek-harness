@@ -1,0 +1,86 @@
+name: Build and Publish Image on Sync
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate Dockerfile and .dockerignore dynamically
+        run: |
+          cat << 'EOF' > .dockerignore
+          node_modules
+          .git
+          .github
+          dist
+          *.log
+          EOF
+
+          cat << 'EOF' > Dockerfile
+          FROM node:22-bookworm-slim
+
+          # Cài đặt công cụ cần thiết để biên dịch các gói native và bật pnpm
+          RUN apt-get update && apt-get install -y python3 make g++ git && rm -rf /var/lib/apt/lists/*
+          RUN corepack enable && corepack prepare pnpm@latest --activate
+
+          WORKDIR /app
+
+          # Cài đặt dependencies
+          COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+          COPY patches ./patches
+          RUN pnpm install --frozen-lockfile
+
+          # Copy source code và build
+          COPY . .
+          RUN pnpm run build
+
+          EXPOSE 3080
+
+          # Chạy Web UI ở chế độ không mở trình duyệt
+          CMD ["pnpm", "dsh", "web", "--no-open", "--host", "0.0.0.0"]
+          EOF
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sync-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
