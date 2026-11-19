@@ -40,13 +40,13 @@ jobs:
 
           WORKDIR /app
 
-          # Cài đặt dependencies
-          COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-          COPY patches ./patches
-          RUN pnpm install --frozen-lockfile
-
-          # Copy source code và build
+          # Copy toàn bộ mã nguồn trước để pnpm đọc đủ các workspace (apps/*, packages/*)
           COPY . .
+
+          # Cài đặt dependencies (bỏ qua git hooks như lefthook vì không có thư mục .git)
+          RUN pnpm install --frozen-lockfile --ignore-scripts
+
+          # Tiến hành build toàn bộ dự án
           RUN pnpm run build
 
           EXPOSE 3080
