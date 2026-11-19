@@ -51,7 +51,7 @@ jobs:
           EXPOSE 3080
 
           # Chạy Web UI ở chế độ không mở trình duyệt
-          CMD ["pnpm", "dsh", "web", "--no-open", "--host", "0.0.0.0"]
+          CMD ["/bin/sh", "-c", "pnpm dsh web --no-open --host $(hostname -i | awk '{print $1}')"
           EOF
 
       - name: Set up Docker Buildx
